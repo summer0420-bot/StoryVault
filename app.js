@@ -7,25 +7,6 @@
 //    "av_nextStoryId"   →  number
 // ─────────────────────────────────────────────────
 
-// ── Default seed data (used only on first-ever load) ──
-const SEED_UNIVERSITIES = [
-  { id: 1, name: "Baylor University",          location: "Waco, TX",      type: "Early Action",     deadline: "November 1, 2024",  status: "In Progress", notes: "Strong Christian community. Need to write the \"Why Baylor\" essay. Check if honors college app is separate." },
-  { id: 2, name: "Arizona State University",   location: "Tempe, AZ",     type: "Regular Decision", deadline: "November 15, 2024", status: "Not Started", notes: "" },
-  { id: 3, name: "University of Texas Austin", location: "Austin, TX",    type: "Early Action",     deadline: "December 1, 2024",  status: "Submitted",   notes: "Submitted all materials. Waiting to hear back." },
-  { id: 4, name: "Pepperdine University",      location: "Malibu, CA",    type: "Early Decision",   deadline: "November 1, 2024",  status: "Researching", notes: "Beautiful campus. Look into the Seaver College programs." },
-  { id: 5, name: "Wheaton College",            location: "Wheaton, IL",   type: "Early Action",     deadline: "November 1, 2024",  status: "In Progress", notes: "Need two teacher recommendation letters." },
-  { id: 6, name: "Liberty University",         location: "Lynchburg, VA", type: "Rolling Admission", deadline: "Open",            status: "Not Started", notes: "" },
-];
-
-const SEED_STORIES = [
-  { id: 1, title: "Student Council Election",       description: "Ran for student council president junior year. Lost the first round but came back and won the general election. Had to give a speech in front of 400 students.", tags: ["Leadership", "Resilience"],               reflection: "I learned how to communicate under pressure and lead despite uncertainty. Losing the first round taught me more about resilience than winning ever could have." },
-  { id: 2, title: "Thailand Mission Trip",          description: "Spent two weeks in Chiang Mai helping build a school and running an English camp for local kids.",                                                              tags: ["Service", "Faith", "Cultural Experience"], reflection: "Discovered the real impact of showing up for others in a foreign culture. Became more comfortable with discomfort." },
-  { id: 3, title: "Short film for school project",  description: "Directed, scripted, and edited a 10-minute documentary about the history of our town's oldest neighborhood.",                                                  tags: ["Creativity"],                              reflection: "Found a voice through storytelling. Realized I could communicate complex ideas in ways that move people." },
-  { id: 4, title: "Parents' divorce, sophomore year", description: "My parents separated when I was 15. I became the primary emotional support for my two younger siblings for several months.",                               tags: ["Resilience", "Community"],                 reflection: "Found strength in routine and learned to be present for my family. Grew up faster than expected — but it made me more empathetic." },
-  { id: 5, title: "AP Physics independent project", description: "Built a working spectrometer from common materials and presented findings at the district science fair.",                                                       tags: ["Academic Growth", "Creativity"],           reflection: "Realized I love the process of building something real from an abstract idea. Science stopped being about grades." },
-  { id: 6, title: "Leading worship at youth group", description: "Led the music and worship team at our church's weekly youth gathering for two years.",                                                                          tags: ["Leadership", "Faith", "Community"],        reflection: "Learned what servant leadership looks like — it's not about being seen, it's about creating space for others." },
-];
-
 // ── Local Storage helpers ──────────────────────────
 const LS = {
   get(key, fallback) {
@@ -45,18 +26,7 @@ const LS = {
   },
 };
 
-// ── Load or seed data ──────────────────────────────
-// "av_seeded" flag ensures seed data is only written once.
-// After that, every save/delete goes to localStorage and is
-// reloaded from there on every page open.
-if (!LS.get("av_seeded", false)) {
-  LS.set("av_universities",  SEED_UNIVERSITIES);
-  LS.set("av_stories",       SEED_STORIES);
-  LS.set("av_nextUniId",     SEED_UNIVERSITIES.length + 1);
-  LS.set("av_nextStoryId",   SEED_STORIES.length + 1);
-  LS.set("av_seeded",        true);
-}
-
+// ── Load data (starts empty until the user adds entries) ──
 let universities = LS.get("av_universities",  []);
 let stories      = LS.get("av_stories",       []);
 let nextUniId    = LS.get("av_nextUniId",     1);
@@ -180,14 +150,31 @@ function renderUniversities() {
 
   const grid  = $("#uni-grid");
   const empty = $("#uni-empty");
+  empty.classList.add("hidden"); // legacy empty-state no longer used
 
-  if (filtered.length === 0) {
-    grid.innerHTML = "";
-    empty.classList.remove("hidden");
+  if (universities.length === 0) {
+    // First-visit / no entries at all → show placeholder card
+    grid.innerHTML = `
+      <div class="placeholder-card">
+        <div class="placeholder-icon">🏛️</div>
+        <div class="placeholder-title">Welcome to Universities</div>
+        <div class="placeholder-desc">Track colleges, application deadlines, statuses, and personal notes here. Click "Add University" to begin building your college list.</div>
+      </div>
+    `;
     return;
   }
 
-  empty.classList.add("hidden");
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div class="placeholder-card">
+        <div class="placeholder-icon">🔍</div>
+        <div class="placeholder-title">No matches</div>
+        <div class="placeholder-desc">No universities match this filter yet.</div>
+      </div>
+    `;
+    return;
+  }
+
   grid.innerHTML = filtered.map(u => {
     const statusKey = "status-" + sanitizeClass(u.status);
     return `
@@ -216,14 +203,31 @@ function renderStories() {
 
   const grid  = $("#story-grid");
   const empty = $("#story-empty");
+  empty.classList.add("hidden"); // legacy empty-state no longer used
 
-  if (filtered.length === 0) {
-    grid.innerHTML = "";
-    empty.classList.remove("hidden");
+  if (stories.length === 0) {
+    // First-visit / no entries at all → show placeholder card
+    grid.innerHTML = `
+      <div class="placeholder-card">
+        <div class="placeholder-icon">📖</div>
+        <div class="placeholder-title">Welcome to Story Bank</div>
+        <div class="placeholder-desc">Save meaningful experiences, reflections, and personal growth moments that may become future essay topics. Click "Add Story" to create your first story.</div>
+      </div>
+    `;
     return;
   }
 
-  empty.classList.add("hidden");
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div class="placeholder-card">
+        <div class="placeholder-icon">🔍</div>
+        <div class="placeholder-title">No matches</div>
+        <div class="placeholder-desc">No stories match this filter yet.</div>
+      </div>
+    `;
+    return;
+  }
+
   grid.innerHTML = filtered.map(s => {
     const tagChips = s.tags
       .map(t => `<span class="tag-chip tag-${sanitizeClass(t)}">${t}</span>`)
