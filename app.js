@@ -57,6 +57,27 @@ function sanitizeClass(str) {
   return str.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9-]/g, "");
 }
 
+// ── College Database (from college-data.js) ───────
+// COLLEGE_DATABASE is expected to be a global array of:
+//   { name, location, type, sat, det, acceptanceRate }
+// Loaded via <script src="college-data.js"> before this file.
+const collegeDB = (typeof COLLEGE_DATABASE !== "undefined") ? COLLEGE_DATABASE : [];
+
+let autocompleteHighlightIndex = -1;
+let selectedCollegeData = null; // holds matched DB record, or null for custom entries
+
+function findCollegeMatches(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return collegeDB
+    .filter(c => c.name.toLowerCase().includes(q))
+    .slice(0, 8);
+}
+
+function findCollegeByName(name) {
+  return collegeDB.find(c => c.name.toLowerCase() === name.trim().toLowerCase()) || null;
+}
+
 function accentClass(tags) {
   if (!tags || tags.length === 0) return "accent-default";
   return "accent-" + sanitizeClass(tags[0]);
@@ -177,6 +198,15 @@ function renderUniversities() {
 
   grid.innerHTML = filtered.map(u => {
     const statusKey = "status-" + sanitizeClass(u.status);
+    const hasCollegeInfo = u.collegeType || u.sat || u.det || u.acceptanceRate;
+    const infoChips = hasCollegeInfo ? `
+      <div class="uni-card-collegeinfo">
+        ${u.collegeType ? `<span class="uni-info-chip">${u.collegeType}</span>` : ""}
+        ${u.sat ? `<span class="uni-info-chip">SAT ${u.sat}</span>` : ""}
+        ${u.det && u.det !== "Not Required" ? `<span class="uni-info-chip">DET ${u.det}</span>` : (u.det === "Not Required" ? `<span class="uni-info-chip">DET not required</span>` : "")}
+        ${u.acceptanceRate ? `<span class="uni-info-chip">${u.acceptanceRate} admit rate</span>` : ""}
+      </div>
+    ` : "";
     return `
       <div class="uni-card" data-id="${u.id}" onclick="openEditUniversity(${u.id})">
         <div class="uni-card-top">
@@ -186,7 +216,9 @@ function renderUniversities() {
         <div class="uni-meta">
           <span>${u.type}</span>
           ${u.deadline ? `<span class="uni-deadline-badge">${u.deadline}</span>` : ""}
+          ${u.location ? `<span>· ${u.location}</span>` : ""}
         </div>
+        ${infoChips}
       </div>
     `;
   }).join("");
@@ -272,6 +304,10 @@ function resetUniversityModal() {
   $("#uni-edit-id").value    = "";
   $("#uni-name").value       = "";
   $("#uni-location").value   = "";
+  $("#uni-college-type").value = "";
+  $("#uni-sat").value        = "";
+  $("#uni-det").value        = "";
+  $("#uni-acceptance").value = "";
   $("#uni-type").value       = "Early Action";
   $("#uni-deadline").value   = "";
   $("#uni-notes").value      = "";
@@ -282,8 +318,100 @@ function resetUniversityModal() {
   $("#modal-uni-title").textContent = "Add university";
   $("#btn-save-uni").textContent    = "Add university";
   $("#btn-delete-uni").classList.add("hidden");
+
+  selectedCollegeData = null;
+  hideCollegeInfoBox();
+  $("#uni-custom-hint").classList.add("hidden");
+  hideAutocomplete();
 }
 
+// ── College Info Box helpers ───────────────────────
+function showCollegeInfoBox(college) {
+  $("#info-location").textContent   = college.location || "—";
+  $("#info-type").textContent       = college.type || "—";
+  $("#info-sat").textContent        = college.sat || "—";
+  $("#info-det").textContent        = (college.det === "Not Required" || college.det === "-") ? "Not required" : (college.det || "—");
+  $("#info-acceptance").textContent = college.acceptanceRate || "—";
+  $("#uni-college-info").classList.remove("hidden");
+}
+
+function hideCollegeInfoBox() {
+  $("#uni-college-info").classList.add("hidden");
+}
+
+// Apply a selected college's data into the hidden fields + preview box
+function applyCollegeSelection(college) {
+  selectedCollegeData = college;
+  $("#uni-location").value      = college.location || "";
+  $("#uni-college-type").value  = college.type || "";
+  $("#uni-sat").value           = college.sat || "";
+  $("#uni-det").value           = (college.det === "-" ) ? "Not Required" : (college.det || "");
+  $("#uni-acceptance").value    = college.acceptanceRate || "";
+  showCollegeInfoBox(college);
+  $("#uni-custom-hint").classList.add("hidden");
+}
+
+// Clear auto-filled fields (used when name no longer matches a DB entry)
+function clearCollegeSelection() {
+  selectedCollegeData = null;
+  $("#uni-location").value      = "";
+  $("#uni-college-type").value  = "";
+  $("#uni-sat").value           = "";
+  $("#uni-det").value           = "";
+  $("#uni-acceptance").value    = "";
+  hideCollegeInfoBox();
+}
+
+// ── Autocomplete UI ────────────────────────────────
+function hideAutocomplete() {
+  const list = $("#uni-autocomplete-list");
+  list.classList.add("hidden");
+  list.innerHTML = "";
+  autocompleteHighlightIndex = -1;
+}
+
+function renderAutocomplete(query) {
+  const list = $("#uni-autocomplete-list");
+  const matches = findCollegeMatches(query);
+
+  if (!query.trim()) {
+    hideAutocomplete();
+    return;
+  }
+
+  autocompleteHighlightIndex = -1;
+
+  const items = matches.map(c => `
+    <div class="autocomplete-item" data-name="${c.name.replace(/"/g, '&quot;')}">
+      <div class="ac-name">${c.name}</div>
+      <div class="ac-location">${c.location}${c.type ? " · " + c.type : ""}</div>
+    </div>
+  `).join("");
+
+  const customItem = `
+    <div class="autocomplete-item ac-custom" data-custom="true">
+      Can't find your school? Use "${query.trim()}" as a custom entry
+    </div>
+  `;
+
+  list.innerHTML = items + customItem;
+  list.classList.remove("hidden");
+}
+
+function selectAutocompleteItem(el) {
+  if (el.dataset.custom === "true") {
+    // Custom entry — keep typed name, clear DB-sourced fields
+    clearCollegeSelection();
+    $("#uni-custom-hint").classList.remove("hidden");
+  } else {
+    const college = findCollegeByName(el.dataset.name);
+    if (college) {
+      $("#uni-name").value = college.name;
+      applyCollegeSelection(college);
+    }
+  }
+  hideAutocomplete();
+}
 function openAddUniversity() {
   resetUniversityModal();
   openModal("modal-university");
@@ -297,6 +425,10 @@ function openEditUniversity(id) {
   $("#uni-edit-id").value  = id;
   $("#uni-name").value     = u.name;
   $("#uni-location").value = u.location || "";
+  $("#uni-college-type").value = u.collegeType || "";
+  $("#uni-sat").value      = u.sat || "";
+  $("#uni-det").value      = u.det || "";
+  $("#uni-acceptance").value = u.acceptanceRate || "";
   $("#uni-type").value     = u.type;
   $("#uni-deadline").value = u.deadline;
   $("#uni-notes").value    = u.notes;
@@ -308,6 +440,24 @@ function openEditUniversity(id) {
   $("#modal-uni-title").textContent = u.name;
   $("#btn-save-uni").textContent    = "Save changes";
   $("#btn-delete-uni").classList.remove("hidden");
+
+  // Show college info box if we have data, otherwise show custom hint
+  if (u.collegeType || u.sat || u.det || u.acceptanceRate || u.location) {
+    selectedCollegeData = {
+      name: u.name,
+      location: u.location,
+      type: u.collegeType,
+      sat: u.sat,
+      det: u.det,
+      acceptanceRate: u.acceptanceRate,
+    };
+    showCollegeInfoBox(selectedCollegeData);
+    $("#uni-custom-hint").classList.add("hidden");
+  } else {
+    selectedCollegeData = null;
+    hideCollegeInfoBox();
+    $("#uni-custom-hint").classList.remove("hidden");
+  }
 
   openModal("modal-university");
 }
@@ -323,6 +473,10 @@ function saveUniversity() {
   const data = {
     name,
     location: $("#uni-location").value.trim(),
+    collegeType: $("#uni-college-type").value.trim(),
+    sat: $("#uni-sat").value.trim(),
+    det: $("#uni-det").value.trim(),
+    acceptanceRate: $("#uni-acceptance").value.trim(),
     type:     $("#uni-type").value,
     deadline: $("#uni-deadline").value.trim(),
     status,
@@ -448,6 +602,64 @@ $("#btn-add-university").addEventListener("click", openAddUniversity);
 $("#btn-add-story").addEventListener("click",      openAddStory);
 $("#btn-save-uni").addEventListener("click",       saveUniversity);
 $("#btn-save-story").addEventListener("click",     saveStory);
+
+// ── University name autocomplete ───────────────────
+const uniNameInput = $("#uni-name");
+const uniAcList    = $("#uni-autocomplete-list");
+
+uniNameInput.addEventListener("input", () => {
+  const query = uniNameInput.value;
+
+  // If the typed text exactly matches a DB entry, auto-apply it
+  const exact = findCollegeByName(query);
+  if (exact) {
+    applyCollegeSelection(exact);
+  } else if (selectedCollegeData) {
+    // Previously selected college, but user is now editing the name → clear
+    clearCollegeSelection();
+  }
+
+  renderAutocomplete(query);
+});
+
+uniNameInput.addEventListener("focus", () => {
+  if (uniNameInput.value.trim()) renderAutocomplete(uniNameInput.value);
+});
+
+uniNameInput.addEventListener("keydown", (e) => {
+  const items = [...uniAcList.querySelectorAll(".autocomplete-item")];
+  if (uniAcList.classList.contains("hidden") || items.length === 0) return;
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    autocompleteHighlightIndex = Math.min(autocompleteHighlightIndex + 1, items.length - 1);
+    items.forEach((it, i) => it.classList.toggle("highlighted", i === autocompleteHighlightIndex));
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    autocompleteHighlightIndex = Math.max(autocompleteHighlightIndex - 1, 0);
+    items.forEach((it, i) => it.classList.toggle("highlighted", i === autocompleteHighlightIndex));
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (autocompleteHighlightIndex >= 0) {
+      selectAutocompleteItem(items[autocompleteHighlightIndex]);
+    } else {
+      hideAutocomplete();
+    }
+  } else if (e.key === "Escape") {
+    hideAutocomplete();
+  }
+});
+
+// Click on an autocomplete item
+uniAcList.addEventListener("click", (e) => {
+  const item = e.target.closest(".autocomplete-item");
+  if (item) selectAutocompleteItem(item);
+});
+
+// Close autocomplete when clicking outside
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".autocomplete-wrap")) hideAutocomplete();
+});
 
 // Delete with confirm
 $("#btn-delete-uni").addEventListener("click", () => {
